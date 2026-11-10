@@ -72,3 +72,21 @@ func TestParseStatementsReportsSyntaxErrorPosition(t *testing.T) {
 		require.Equal(t, tc.want, syntaxErr.Position, tc.statement)
 	}
 }
+
+func TestParseRegexCheckConstraint(t *testing.T) {
+	ddl := "CREATE TABLE t (\n  id INT NOT NULL,\n  channel_code VARCHAR(10) NOT NULL,\n  CONSTRAINT chk_channel CHECK (REGEXP_LIKE(channel_code, '^[A-Z]{2}$'))\n);"
+	stmts, err := base.ParseStatements(storepb.Engine_MARIADB, ddl)
+	require.NoError(t, err)
+	require.Len(t, stmts, 1)
+
+	// Try with CHECK ((channel_code REGEXP '^[A-Z]{2}$'))
+	ddl2 := "CREATE TABLE t (\n  id INT NOT NULL,\n  channel_code VARCHAR(10) NOT NULL,\n  CONSTRAINT chk_channel CHECK ((channel_code REGEXP '^[A-Z]{2}$'))\n);"
+	stmts2, err := base.ParseStatements(storepb.Engine_MARIADB, ddl2)
+	require.NoError(t, err)
+	require.Len(t, stmts2, 1)
+
+	// What happens if CHECK lacks parentheses, as produced by serialization?
+	invalidDDL := "CREATE TABLE t (\n  id INT NOT NULL,\n  channel_code VARCHAR(10) NOT NULL,\n  CONSTRAINT chk_channel CHECK regexp_like(channel_code, '^[A-Z]{2}$')\n);"
+	_, err = base.ParseStatements(storepb.Engine_MARIADB, invalidDDL)
+	require.Error(t, err)
+}

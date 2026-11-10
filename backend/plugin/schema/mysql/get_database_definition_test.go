@@ -52,6 +52,41 @@ func TestGetTableDefinitionWithCheckConstraint(t *testing.T) {
 	require.NotContains(t, got, `\'`)
 }
 
+func TestGetTableDefinitionRegexCheckConstraintRoundtrip(t *testing.T) {
+	ddls := []string{
+		"CREATE TABLE `t` (\n  `id` int NOT NULL,\n  `channel_code` varchar(10) NOT NULL,\n  CONSTRAINT `chk_channel` CHECK (REGEXP_LIKE(channel_code, '^[A-Z]{2}$'))\n);",
+		"CREATE TABLE `t` (\n  `id` int NOT NULL,\n  `channel_code` varchar(10) NOT NULL,\n  CONSTRAINT `chk_channel` CHECK ((channel_code REGEXP '^[A-Z]{2}$'))\n);",
+	}
+	for _, ddl := range ddls {
+		meta, err := GetDatabaseMetadata(ddl)
+		require.NoError(t, err)
+		tbl := meta.GetSchemas()[0].GetTables()[0]
+		got, err := GetTableDefinition("", tbl, nil)
+		require.NoError(t, err)
+		t.Logf("Generated definition:\n%s", got)
+		// Try to reserialize / parse the generated table definition
+		_, err = GetDatabaseMetadata(got)
+		require.NoError(t, err, "failed to reparse generated table definition: %s", got)
+	}
+}
+
+func TestFormatCheckExpression(t *testing.T) {
+	for _, tc := range []struct {
+		input string
+		want  string
+	}{
+		{"(`age` >= 18)", "(`age` >= 18)"},
+		{"((`type` = 'A') and (`amount` is not null))", "((`type` = 'A') and (`amount` is not null))"},
+		{"regexp_like(`channel_code`,'^[A-Z]{2}$')", "(regexp_like(`channel_code`,'^[A-Z]{2}$'))"},
+		{"json_valid(`metadata`)", "(json_valid(`metadata`))"},
+		{"(`a` > 0) and (`b` > 0)", "((`a` > 0) and (`b` > 0))"},
+		{"(`val` = ')')", "(`val` = ')')"},
+		{"(`val` = '\\')')", "(`val` = '\\')')"},
+	} {
+		require.Equal(t, tc.want, formatCheckExpression(tc.input), "input: %s", tc.input)
+	}
+}
+
 func TestGetTableDefinitionWithSystemVersioning(t *testing.T) {
 	table := &metadatapb.TableMetadata{
 		Name: "explicit_period",

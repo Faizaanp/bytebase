@@ -863,8 +863,60 @@ func getVersionSpecificComment(partitions []*metadatapb.TablePartitionMetadata) 
 	return "\n/*!50100"
 }
 
+func isEnclosedInParens(s string) bool {
+	s = strings.TrimSpace(s)
+	if len(s) < 2 || s[0] != '(' || s[len(s)-1] != ')' {
+		return false
+	}
+	depth := 0
+	inSingleQuote, inDoubleQuote, inBacktick := false, false, false
+	var prev byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if inSingleQuote {
+			if c == '\'' && prev != '\\' {
+				inSingleQuote = false
+			}
+		} else if inDoubleQuote {
+			if c == '"' && prev != '\\' {
+				inDoubleQuote = false
+			}
+		} else if inBacktick {
+			if c == '`' {
+				inBacktick = false
+			}
+		} else {
+			switch c {
+			case '\'':
+				inSingleQuote = true
+			case '"':
+				inDoubleQuote = true
+			case '`':
+				inBacktick = true
+			case '(':
+				depth++
+			case ')':
+				depth--
+				if depth == 0 && i < len(s)-1 {
+					return false
+				}
+			}
+		}
+		prev = c
+	}
+	return depth == 0
+}
+
+func formatCheckExpression(expr string) string {
+	trimmed := strings.TrimSpace(expr)
+	if isEnclosedInParens(trimmed) {
+		return trimmed
+	}
+	return fmt.Sprintf("(%s)", trimmed)
+}
+
 func printCheckClause(buf *strings.Builder, check *metadatapb.CheckConstraintMetadata) error {
-	if _, err := fmt.Fprintf(buf, ",\n  CONSTRAINT `%s` CHECK %s", check.Name, check.Expression); err != nil {
+	if _, err := fmt.Fprintf(buf, ",\n  CONSTRAINT `%s` CHECK %s", check.Name, formatCheckExpression(check.Expression)); err != nil {
 		return err
 	}
 	return nil

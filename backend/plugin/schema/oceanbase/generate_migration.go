@@ -876,8 +876,7 @@ func writeAddCheckConstraint(buf *strings.Builder, table string, check *metadata
 	_, _ = buf.WriteString("` ADD CONSTRAINT `")
 	_, _ = buf.WriteString(check.Name)
 	_, _ = buf.WriteString("` CHECK ")
-	// The expression already includes parentheses from the parser
-	_, _ = buf.WriteString(check.Expression)
+	_, _ = buf.WriteString(formatCheckExpression(check.Expression))
 	_, _ = buf.WriteString(";\n\n")
 	return nil
 }
